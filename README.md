@@ -1,5 +1,6 @@
 # logtime
 Calculate simulation performance from GROMACS logfiles by parsing checkpoint timestamps.
+
 Mostly an exercise in parsing and making (too elaborate) classes.
 
 ## Usage
