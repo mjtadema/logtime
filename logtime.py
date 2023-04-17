@@ -83,7 +83,9 @@ def main(filename):
     # Filter out whatever is >0.5 hours
     deltas = filter(lambda dt: dt / timedelta(hours=1) < 0.5, deltas)
     times = [nsday(dt) for dt in deltas]
-    print(f"{filename}\t:\t{mean(times):.2f} ns/day (±{stdev(times):.2f})")
+    last = cps[-1]
+    lasttime = last.steps * (0.002 / 1000)
+    print(f"{filename}\t:\t{lasttime:.2f} ns\t@{mean(times):.2f} ns/day (±{stdev(times):.2f})")
 
 if __name__ == "__main__":
     filename = Path(sys.argv[1])
