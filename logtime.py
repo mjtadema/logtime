@@ -87,7 +87,7 @@ def readlines_reversed(fh: typing.BinaryIO, bufsize=8192):
     if segment is not None:
         yield segment # yield the last segment as well
 
-def parse_checkpoints(filename: Path, nsamples=8):
+def parse_checkpoints(filename: Path, nsamples=4, **kwargs):
     cps = set()
     with open(filename, 'rb') as f:
         for line in readlines_reversed(f):
@@ -111,6 +111,8 @@ def parse_arguments() -> dict:
                         help="log file to read.")
     parser.add_argument("--verbose", '-v', action="store_true", default=False,
                         help="Show debug messages.")
+    parser.add_argument("--nsamples", '-n', type=int, default=4,
+                        help="Number of checkpoint samples to take (default: 4).")
     args = parser.parse_args()
     if args.verbose:
         logger.setLevel(logging.DEBUG)
@@ -122,7 +124,7 @@ def parse_arguments() -> dict:
 def main(*, filename: Union[Path,str], **kwargs):
     filename = Path(filename)
     # Simply subtract the last checkpoint from the second to last one
-    cps = list(sorted(parse_checkpoints(filename)))
+    cps = list(sorted(parse_checkpoints(filename, **kwargs)))
     assert len(cps) > 1, print("Could not read checkpoints from", filename, file=sys.stderr)
     # zip(cps[:-1], cps[1:]) is taking the difference between neighboring checkpoints
     deltas = [after - before for before, after in zip(cps[:-1], cps[1:])]
