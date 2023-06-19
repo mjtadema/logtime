@@ -11,6 +11,11 @@ import calendar
 from pathlib import Path
 import sys
 from statistics import mean, stdev
+import argparse
+
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger()
 
 re_checkpoint = re.compile(
     r'^Writing checkpoint, step (\d+) at \w{3} (\w{3})\W{1,2}(\d{1,2}) (\d{1,2}):(\d{1,2}):(\d{1,2}) (\d{4})$'
@@ -57,17 +62,15 @@ def parse_checkpoints(filename: Path, buffsize=(2**12)):
     cps = set()
     i = 1
     with open(filename, 'rb') as f:
-        while len(cps) < 8:  # How many samples to take
-            try:
-                f.seek(-(i*buffsize), 2)  # 2 means start from end of file
-            except OSError:
-                # Could not seek further i guess
-                break
-            for line in reversed(f.readlines()):
-                match = re.match(re_checkpoint, line.decode())
-                if match:
-                    cps.add(Checkpoint.from_regex(*match.groups()))
-            i+=1
+        for line in readlines_reversed(f):
+            match = re.match(re_checkpoint, line)
+            if match:
+                cp = Checkpoint.from_regex(*match.groups())
+                logger.debug(f"adding checkpoint {cp}.")
+                cps.add(cp)
+                logger.debug(f"{len(cps)} checkpoints of {nsamples}.")
+                if len(cps) >= nsamples:
+                    break
     return cps
 
 def nsday(delta: Checkpoint):
@@ -76,7 +79,7 @@ def nsday(delta: Checkpoint):
 
 def main(filename):
     # Simply subtract the last checkpoint from the second to last one
-    cps = list(sorted(parse_checkpoints(Path(filename))))
+    cps = list(sorted(parse_checkpoints(filename)))
     assert len(cps) > 1, print("Could not read checkpoints from", filename, file=sys.stderr)
     # zip(cps[:-1], cps[1:]) is taking the difference between neighboring checkpoints
     deltas = [after - before for before, after in zip(cps[:-1], cps[1:])]
@@ -88,9 +91,5 @@ def main(filename):
     print(f"{filename}\t:\t{lasttime:.2f} ns\t@{mean(times):.2f} ns/day (±{stdev(times):.2f})")
 
 if __name__ == "__main__":
-    filename = Path(sys.argv[1])
-    try:
-        assert filename.exists(), print(filename, "doesn't exist", file=sys.stderr)
-        main(filename)
-    except AssertionError:
-        exit(1)
+    kwargs = parse_arguments()
+    main(**kwargs)
