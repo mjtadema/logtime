@@ -5,6 +5,8 @@ Read a GROMACS log file for the checkpoint
 timestamps to calculate the performance
 """
 import re
+import os
+import typing
 from collections import namedtuple
 from datetime import datetime, timedelta
 import calendar
@@ -58,9 +60,34 @@ class Checkpoint:
         )
         return cls(int(parsed.steps), timestamp)
 
-def parse_checkpoints(filename: Path, buffsize=(2**12)):
+def readlines_reversed(fh: typing.BinaryIO, bufsize=8192):
+    """Generator that reads lines from a file in reverse by using a buffer.
+    kinda stole this from https://stackoverflow.com/questions/2301789/how-to-read-a-file-in-reverse-order"""
+    segment = None
+    fh.seek(0, os.SEEK_END)  # 0 bytes from the end of the file
+    filesize = remaining_size = fh.tell()
+    offset = 0
+    while remaining_size > 0:
+        offset = min(filesize, offset + bufsize)
+        fh.seek(filesize - offset)
+        buffer = fh.read(min(remaining_size, bufsize)).decode(encoding='utf-8')
+        remaining_size -= bufsize
+        lines = buffer.split('\n')
+        # chunks will be truncated
+        if segment is not None:
+            # If there was something left in segment, append it to the last line
+            if buffer[-1] != '\n':
+                lines[-1] += segment
+            else:
+                yield segment
+        segment = lines.pop() # this should pop 0 by default?
+        for line in reversed(lines):
+            yield line
+    if segment is not None:
+        yield segment # yield the last segment as well
+
+def parse_checkpoints(filename: Path, nsamples=8):
     cps = set()
-    i = 1
     with open(filename, 'rb') as f:
         for line in readlines_reversed(f):
             match = re.match(re_checkpoint, line)
@@ -77,7 +104,22 @@ def nsday(delta: Checkpoint):
     # ns/day    steps      days          ps/step  ns
     return (delta.steps / delta.days) * (0.002 / 1000)
 
-def main(filename):
+def parse_arguments() -> dict:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("filename", type=Path,
+                        help="log file to read.")
+    parser.add_argument("--verbose", '-v', action="store_true", default=False,
+                        help="Show debug messages.")
+    args = parser.parse_args()
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
+    if not args.filename.exists():
+        raise FileNotFoundError(f"{args.filename} not found.")
+
+    return vars(args)
+
+def main(*, filename: Path | str, **kwargs):
+    filename = Path(filename)
     # Simply subtract the last checkpoint from the second to last one
     cps = list(sorted(parse_checkpoints(filename)))
     assert len(cps) > 1, print("Could not read checkpoints from", filename, file=sys.stderr)
