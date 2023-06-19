@@ -7,6 +7,7 @@ timestamps to calculate the performance
 import re
 import os
 import typing
+from typing import Union
 from collections import namedtuple
 from datetime import datetime, timedelta
 import calendar
@@ -118,7 +119,7 @@ def parse_arguments() -> dict:
 
     return vars(args)
 
-def main(*, filename: Path | str, **kwargs):
+def main(*, filename: Union[Path,str], **kwargs):
     filename = Path(filename)
     # Simply subtract the last checkpoint from the second to last one
     cps = list(sorted(parse_checkpoints(filename)))
@@ -130,7 +131,7 @@ def main(*, filename: Path | str, **kwargs):
     times = [nsday(dt) for dt in deltas]
     last = cps[-1]
     lasttime = last.steps * (0.002 / 1000)
-    print(f"{filename}\t:\t{lasttime:.2f} ns\t@{mean(times):.2f} ns/day (±{stdev(times):.2f})")
+    logger.info(f"{filename}\t:\t{lasttime:.2f} ns\t@{mean(times):.2f} ns/day (±{stdev(times):.2f})")
 
 if __name__ == "__main__":
     kwargs = parse_arguments()
