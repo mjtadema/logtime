@@ -111,6 +111,8 @@ def parse_arguments() -> dict:
                         help="log file to read.")
     parser.add_argument("--verbose", '-v', action="store_true", default=False,
                         help="Show debug messages.")
+    parser.add_argument("--hpu", action="store_true", default=False,
+                        help="Show time in hour per us")
     parser.add_argument("--nsamples", '-n', type=int, default=4,
                         help="Number of checkpoint samples to take (default: 4).")
     args = parser.parse_args()
@@ -121,19 +123,35 @@ def parse_arguments() -> dict:
 
     return vars(args)
 
-def main(*, filename: Union[Path,str], **kwargs):
+def hours_per_us(t: float) -> float:
+    return (24 / t) * 1000
+
+def main(*, filename: Union[Path,str], hpu: bool, **kwargs):
     filename = Path(filename)
     # Simply subtract the last checkpoint from the second to last one
     cps = list(sorted(parse_checkpoints(filename, **kwargs)))
-    assert len(cps) > 1, print("Could not read checkpoints from", filename, file=sys.stderr)
+    if len(cps) < 2:
+        e = ValueError(
+            "Could not read enough checkpoints from", filename
+        )
+        logger.exception(e)
+        raise e
     # zip(cps[:-1], cps[1:]) is taking the difference between neighboring checkpoints
     deltas = [after - before for before, after in zip(cps[:-1], cps[1:])]
     # Filter out whatever is >0.5 hours
     deltas = filter(lambda dt: dt / timedelta(hours=1) < 0.5, deltas)
+    unit = "ns/day"
     times = [nsday(dt) for dt in deltas]
+    if hpu:
+        unit = "hours/us"
+        times = [hours_per_us(t) for t in times]
     last = cps[-1]
     lasttime = last.steps * (0.002 / 1000)
-    logger.info(f"{filename}\t:\t{lasttime:.2f} ns\t@{mean(times):.2f} ns/day (±{stdev(times):.2f})")
+    std = 0
+    if len(cps) >= 3:
+        std = stdev(times)
+    logger.info("{}\t:\t{:.2f} ns\t@{:.2f} {} (±{:.2f})".format(
+        filename, lasttime, mean(times), unit, std))
 
 if __name__ == "__main__":
     kwargs = parse_arguments()
