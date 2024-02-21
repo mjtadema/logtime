@@ -93,6 +93,7 @@ def parse_checkpoints(filename: Path, nsamples=4, **kwargs):
         for line in readlines_reversed(f):
             match = re.match(re_checkpoint, line)
             if match:
+                logger.debug(f"Matched line:\n{line}")
                 cp = Checkpoint.from_regex(*match.groups())
                 logger.debug(f"adding checkpoint {cp}.")
                 cps.add(cp)
@@ -101,9 +102,9 @@ def parse_checkpoints(filename: Path, nsamples=4, **kwargs):
                     break
     return cps
 
-def nsday(delta: Checkpoint):
+def nsday(delta: Checkpoint, dt: float):
     # ns/day    steps      days          ps/step  ns
-    return (delta.steps / delta.days) * (0.002 / 1000)
+    return (delta.steps / delta.days) * (dt / 1000)
 
 def parse_arguments() -> dict:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -126,8 +127,19 @@ def parse_arguments() -> dict:
 def hours_per_us(t: float) -> float:
     return (24 / t) * 1000
 
+def parse_dt(filename: Union[Path,str], **kwargs):
+    """Read the dt from logfile"""
+    filename = Path(filename)
+    with open(filename) as f:
+        for line in f:
+            if line.startswith("   dt"):
+                dt = line.strip().split()[-1]
+    return float(dt)
+
 def main(*, filename: Union[Path,str], hpu: bool, **kwargs):
     filename = Path(filename)
+    # Read the timestep value from input parameters
+    dt = parse_dt(filename, **kwargs)
     # Simply subtract the last checkpoint from the second to last one
     cps = list(sorted(parse_checkpoints(filename, **kwargs)))
     if len(cps) < 2:
@@ -139,14 +151,14 @@ def main(*, filename: Union[Path,str], hpu: bool, **kwargs):
     # zip(cps[:-1], cps[1:]) is taking the difference between neighboring checkpoints
     deltas = [after - before for before, after in zip(cps[:-1], cps[1:])]
     # Filter out whatever is >0.5 hours
-    deltas = filter(lambda dt: dt / timedelta(hours=1) < 0.5, deltas)
+    deltas = filter(lambda delta: delta / timedelta(hours=1) < 0.5, deltas)
     unit = "ns/day"
-    times = [nsday(dt) for dt in deltas]
+    times = [nsday(delta, dt) for delta in deltas]
     if hpu:
         unit = "hours/us"
         times = [hours_per_us(t) for t in times]
     last = cps[-1]
-    lasttime = last.steps * (0.002 / 1000)
+    lasttime = last.steps * (dt / 1000) # ns
     std = 0
     if len(cps) >= 3:
         std = stdev(times)
